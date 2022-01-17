@@ -4,8 +4,6 @@ require("@nomiclabs/hardhat-etherscan");
 require('@openzeppelin/hardhat-upgrades');
 const { mnemonic, bscScanApiKey, privatKey } = require('./secrets.json');
 
-// This is a sample Hardhat task. To learn how to create your own go to
-// https://hardhat.org/guides/create-task.html
 task("accounts", "Prints the list of accounts", async () => {
   const accounts = await ethers.getSigners();
 
@@ -32,36 +30,27 @@ module.exports = {
     testnetBSC: {
       url: "https://data-seed-prebsc-1-s1.binance.org:8545",
       chainId: 97,
-      gasPrice: 20000000000,
-      accounts: {mnemonic: mnemonic}
+      gasPrice: 20e9,
+      accounts: { mnemonic: mnemonic }
     },
     mainnetBSC: {
       url: "https://bsc-dataseed.binance.org/",
       chainId: 56,
-      gasPrice: 20000000000,
+      gasPrice: 20e9,
       accounts: [privatKey]
     },
     testnetMatic: {
       url: "https://rpc-mumbai.maticvigil.com/",
       chainId: 80001,
       gasPrice: 20000000000,
-      accounts: {mnemonic: mnemonic}
+      accounts: { mnemonic: mnemonic }
     },
   },
   etherscan: {
     apiKey: bscScanApiKey
   },
   solidity: {
-    compilers:[
-      {
-        version: "0.6.6",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          }
-        }
-      },
+    compilers: [
       {
         version: "0.8.4",
         settings: {
@@ -70,8 +59,40 @@ module.exports = {
             runs: 200,
           }
         }
+      },
+      {
+        version: "0.8.2",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          }
+        }
+      },
+      {
+        version: "0.8.0",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          }
+        }
+      },
+      {
+        version: "0.6.12",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          }
+        }
       }
-    ]
+    ],
+    outputSelection: {
+      "*": {
+        "*": ["storageLayout"]
+      }
+    }
   },
   paths: {
     sources: "./contracts",
