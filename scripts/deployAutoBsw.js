@@ -4,7 +4,7 @@ const { ethers, network } = require('hardhat')
 
 const BSW_mainnet = '0x965F527D9159dCe6288a2219DB51fc6Eef120dD1'
 const MASTERCHEF_mainnet = '0xDbc1A13490deeF9c3C12b44FE77b503c1B061739'
-const TREASURY = '0x9Ee7A44E6FD36f3415848362cf88dE42941540a7' //TODO check when deploy in Mainnet!!!
+const TREASURY = `0xd3a70caa19d72D9Ed09520594cae4eeA7812Ab51`//'0x9Ee7A44E6FD36f3415848362cf88dE42941540a7' //TODO check when deploy in Mainnet!!!
 
 const main = async () => {
     const [deployer] = await ethers.getSigners()

@@ -36,7 +36,7 @@ module.exports = {
     mainnetBSC: {
       url: "https://bsc-dataseed.binance.org/",
       chainId: 56,
-      gasPrice: 20e9,
+      gasPrice: 5e9,
       accounts: [privatKey]
     },
     testnetMatic: {
@@ -70,7 +70,7 @@ module.exports = {
         }
       },
       {
-        version: "0.8.0",
+        version: "0.8.9",
         settings: {
           optimizer: {
             enabled: true,
