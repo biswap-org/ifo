@@ -8,6 +8,7 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import './interfaces/IAutoBSW.sol';
+import "./interfaces/IOracle.sol";
 
 contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
@@ -37,6 +38,8 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     struct InfoFront {
         Pool pool;
         UserInfo userInfo;
+        uint128 userDepositInUSD;
+        uint128 accrueInterestInUSD;
     }
 
     Pool[] public pools;
@@ -45,6 +48,9 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     mapping(address => mapping(uint => UserInfo)) public userInfo; //User info storage: user address => poolId => UserInfo struct
     mapping(uint32 => mapping(address => uint128)) public pendingWithdraw; //Pending withdraw day => token => amount
     mapping(address => mapping(address => uint32)) public userPendingWithdraw; //User pending withdraw flag user address => token => day
+
+    IOracle public oracle;
+    address public USDTAddress;
 
     event Deposit(address indexed user, uint128 amount, address indexed token);
     event Withdraw(address indexed user, address token, uint128 pendingInterest, uint128 userDeposit, uint128 fee);
@@ -58,6 +64,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     function initialize(address _treasury, IAutoBSW _autoBSW) public initializer {
         __AccessControl_init_unchained();
         __ReentrancyGuard_init();
+        __Pausable_init();
 
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(TREASURY_ROLE, _treasury);
@@ -75,6 +82,12 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
 
     //External functions ---------------------------------------------------------------------------------------------
 
+    function setOracle(IOracle _oracle, address _USDTAddress) external onlyRole(DEFAULT_ADMIN_ROLE){
+        require(address(_oracle) != address(0) && _USDTAddress != address(0), "Cant be zero address");
+        oracle = _oracle;
+        USDTAddress = _USDTAddress;
+    }
+
     function setAutoBSW(IAutoBSW _autoBSW) external onlyRole(DEFAULT_ADMIN_ROLE){
         require(address(_autoBSW) != address(0), "Cant be zero address");
         autoBSW = _autoBSW;
@@ -91,7 +104,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         IERC20Upgradeable _token = pools[_poolIndex].token;
         pools[_poolIndex] = _pool;
         pools[_poolIndex].totalDeposited = _totalDeposited; //Save total deposited when upgrade pool
-        pools[_poolIndex].token = _token; //Cant change token when pool started
+        pools[_poolIndex].token = _token; //Cant change token
         emit PoolChanged(_poolIndex);
     }
 
@@ -117,7 +130,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     //Public functions -----------------------------------------------------------------------------------------------
 
     function getCurrentDay() public view returns(uint32 currentDay){
-        currentDay = uint32(block.timestamp / 86400);
+        currentDay = uint32((block.timestamp + 43200) / 86400); // Accrue on 12:00 PM UTC
     }
 
     function getHolderPoolAmount(address _user) public view returns(uint holderPoolAmount){
@@ -132,8 +145,13 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
             info[i].userInfo = userInfo[_user][i];
 
             uint32 multiplier = getMultiplier(info[i].userInfo.lastDayAction, info[i].pool.endDay);
+            //Show in accrueInterest user rewards for frontend
             info[i].userInfo.accrueInterest += info[i].userInfo.userDeposit == 0 && info[i].userInfo.lastDayAction >= currentDay ? 0 :
             (info[i].userInfo.userDeposit * info[i].pool.dayPercent / 10000) * multiplier;
+            info[i].accrueInterestInUSD = _user == address(0) ? 0 :
+                _getAmountInUSDT(address(info[i].pool.token), info[i].userInfo.accrueInterest);
+            info[i].userDepositInUSD = _user == address(0) ? 0 :
+                _getAmountInUSDT(address(info[i].pool.token), info[i].userInfo.userDeposit);
         }
         holderPoolAmount = _user == address(0) ? 0 : getHolderPoolAmount(_user);
     }
@@ -231,4 +249,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         }
     }
 
+    function _getAmountInUSDT(address _token, uint _amount) internal view returns (uint128) {
+        return uint128(oracle.consult(_token, _amount, USDTAddress));
+    }
 }
