@@ -33,6 +33,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         uint128 userDeposit; //User deposit on pool
         uint128 accrueInterest; //User accrue interest
         uint32 lastDayAction;
+        bool endLockTime;
     }
 
     struct InfoFront {
@@ -46,15 +47,15 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     Pool[] public pools;
     IAutoBSW public autoBSW;
     address public treasury;
-    mapping(address => mapping(uint => UserInfo)) public userInfo; //User info storage: user address => poolId => UserInfo struct
-    mapping(uint32 => mapping(address => uint128)) public pendingWithdraw; //Pending withdraw day => token => amount
-    mapping(address => mapping(address => uint32)) public userPendingWithdraw; //User pending withdraw flag user address => token => day
-
     IOracle public oracle;
     address public USDTAddress;
 
-    mapping(uint32 => mapping(uint => uint128)) dailyBalances; // Daily deposit of pools: day => poolId => balance
-    mapping(uint32 => mapping(uint => uint128)) dailyWithdraw; // Daily withdraw of pools: day => poolId => balance
+    mapping(address => mapping(uint => UserInfo)) public userInfo; //User info storage: user address => poolId => UserInfo struct
+    mapping(uint32 => mapping(address => uint128)) public pendingWithdraw; //Pending withdraw day => token => amount
+    mapping(address => mapping(address => uint32)) public userPendingWithdraw; //User pending withdraw flag user address => token => day
+    mapping(uint32 => mapping(uint => uint128)) public dailyDeposit; // Daily deposit of pools: day => poolId => balance
+    mapping(uint32 => mapping(uint => uint128)) public dailyWithdraw; // Daily withdraw of pools: day => poolId => balance
+
 
     event Deposit(address indexed user, uint128 amount, address indexed token, uint poolIndex);
     event Withdraw(address indexed user, address indexed token, uint128 pendingInterest, uint128 userDeposit, uint128 fee, uint poolIndex);
@@ -65,13 +66,14 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     event TreasuryWithdraw(address indexed token, uint amount);
     //Initialize function --------------------------------------------------------------------------------------------
 
-    function initialize(address _treasury, IAutoBSW _autoBSW) public initializer {
+    function initialize(address _treasury, address _treasuryAdmin, IAutoBSW _autoBSW) public initializer {
+        require(_treasury != address(0) && address(_autoBSW) != address(0) && _treasuryAdmin != address(0), "Address cant be zero");
         __AccessControl_init_unchained();
         __ReentrancyGuard_init();
         __Pausable_init();
 
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(TREASURY_ROLE, _treasury);
+        _setupRole(TREASURY_ROLE, _treasuryAdmin);
         treasury = _treasury;
         autoBSW = _autoBSW;
     }
@@ -90,6 +92,11 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         require(address(_oracle) != address(0) && _USDTAddress != address(0), "Cant be zero address");
         oracle = _oracle;
         USDTAddress = _USDTAddress;
+    }
+
+    function setTreasury(address _treasury) external onlyRole(DEFAULT_ADMIN_ROLE){
+        require(_treasury != address(0), "Address cant be zero");
+        treasury = _treasury;
     }
 
     function setAutoBSW(IAutoBSW _autoBSW) external onlyRole(DEFAULT_ADMIN_ROLE){
@@ -168,8 +175,8 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
                 _getAmountInUSDT(address(info[i].pool.token), info[i].userInfo.accrueInterest);
             info[i].userDepositInUSD = _user == address(0) ? 0 :
                 _getAmountInUSDT(address(info[i].pool.token), info[i].userInfo.userDeposit);
-            info[i].timestampEndLockPeriod = currentDay < info[i].pool.endDay ?
-                (info[i].userInfo.lastDayAction + info[i].pool.lockPeriod) * 86400 + 43200 : info[i].pool.endDay * 86400 + 43200;
+            info[i].timestampEndLockPeriod = !info[i].userInfo.endLockTime ? currentDay < info[i].pool.endDay ?
+                (info[i].userInfo.lastDayAction + info[i].pool.lockPeriod) * 86400 + 43200 : info[i].pool.endDay * 86400 + 43200 : 0;
         }
         holderPoolAmount = _user == address(0) ? 0 : getHolderPoolAmount(_user);
     }
@@ -189,6 +196,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         _userInfo.accrueInterest += _userInfo.userDeposit == 0 && _userInfo.lastDayAction >= currentDay ? 0 :
             (_userInfo.userDeposit * _pool.dayPercent / 1000000) * multiplier;
         _userInfo.lastDayAction = currentDay;
+        _userInfo.endLockTime = false;
         _userInfo.userDeposit += _amount;
         pools[_poolIndex].totalDeposited += _amount;
         dailyBalances[currentDay][_poolIndex] += _amount;
@@ -221,8 +229,9 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
             pools[_poolIndex].totalDeposited -= _userInfo.userDeposit;
             dailyWithdraw[currentDay][_poolIndex] += _userInfo.userDeposit;
             emit Withdraw(msg.sender, address(_pool.token), pendingInterest, _userInfo.userDeposit, fee, _poolIndex);
-            _userInfo.accrueInterest = 0;
             _userInfo.userDeposit = 0;
+            _userInfo.accrueInterest = 0;
+            _userInfo.endLockTime = false;
             if(fee > 0) _pool.token.safeTransfer(treasury, fee);
             _pool.token.safeTransfer(msg.sender, accumAmount - fee);
         }
@@ -233,7 +242,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         UserInfo storage _userInfo = userInfo[msg.sender][_poolIndex];
         uint32 currentDay = getCurrentDay();
         uint32 multiplier = getMultiplier(_userInfo.lastDayAction, _pool.endDay);
-        require(currentDay - _userInfo.lastDayAction > _pool.lockPeriod || currentDay >= _pool.endDay, "Lock period not finished");
+        require(_userInfo.endLockTime || (currentDay - _userInfo.lastDayAction > _pool.lockPeriod || currentDay >= _pool.endDay), "Lock period not finished");
         uint128 pendingAmount = _userInfo.accrueInterest + (_userInfo.userDeposit * _pool.dayPercent / 1000000) * multiplier;
         if(_pool.token.balanceOf(address(this)) < pendingAmount){
             if(userPendingWithdraw[msg.sender][address(_pool.token)] != currentDay){
@@ -244,6 +253,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
             return;
         } else {
             _userInfo.accrueInterest = 0;
+            _userInfo.endLockTime = true;
             _userInfo.lastDayAction = currentDay;
             _pool.token.safeTransfer(msg.sender, pendingAmount);
             emit Harvest(msg.sender, address(_pool.token), pendingAmount, _poolIndex);
