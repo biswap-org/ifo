@@ -8,7 +8,6 @@ import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import './interfaces/IAutoBSW.sol';
-import "./interfaces/IOracle.sol";
 
 contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
@@ -18,7 +17,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     struct Pool {
         IERC20Upgradeable token;
         uint32 endDay;
-        uint32 dayPercent; //one day percent in Base 1000000
+        uint32 dayPercent; //one day percent in Base 1000000000
         uint16 lockPeriod; //lock period in days
         uint16 withdrawalFee; // early withdrawal fee in base 10000
         uint128 maxDeposit;
@@ -40,15 +39,12 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         Pool pool;
         UserInfo userInfo;
         uint32 timestampEndLockPeriod;
-        uint128 userDepositInUSD;
-        uint128 accrueInterestInUSD;
     }
 
     Pool[] public pools;
     IAutoBSW public autoBSW;
     address public treasury;
-    IOracle public oracle;
-    address public USDTAddress;
+    address public treasuryAdmin;
 
     mapping(address => mapping(uint => UserInfo)) public userInfo; //User info storage: user address => poolId => UserInfo struct
     mapping(uint32 => mapping(address => uint128)) public pendingWithdraw; //Pending withdraw day => token => amount
@@ -75,6 +71,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(TREASURY_ROLE, _treasuryAdmin);
         treasury = _treasury;
+        treasuryAdmin = _treasuryAdmin;
         autoBSW = _autoBSW;
     }
 
@@ -88,15 +85,10 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
 
     //External functions ---------------------------------------------------------------------------------------------
 
-    function setOracle(IOracle _oracle, address _USDTAddress) external onlyRole(DEFAULT_ADMIN_ROLE){
-        require(address(_oracle) != address(0) && _USDTAddress != address(0), "Cant be zero address");
-        oracle = _oracle;
-        USDTAddress = _USDTAddress;
-    }
-
-    function setTreasury(address _treasury) external onlyRole(DEFAULT_ADMIN_ROLE){
-        require(_treasury != address(0), "Address cant be zero");
+    function setTreasury(address _treasury, address _treasuryAdmin) external onlyRole(DEFAULT_ADMIN_ROLE){
+        require(_treasury != address(0) && _treasuryAdmin != address(0), "Address cant be zero");
         treasury = _treasury;
+        treasuryAdmin = _treasuryAdmin;
     }
 
     function setAutoBSW(IAutoBSW _autoBSW) external onlyRole(DEFAULT_ADMIN_ROLE){
@@ -122,6 +114,10 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     function setPoolState(uint _poolIndex, bool _state) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(_poolIndex < pools.length, "Index out of bound");
         pools[_poolIndex].depositEnabled = _state;
+        if(!_state)
+        {
+            pools[_poolIndex].endDay = getCurrentDay();
+        }
         emit PoolChangeState(_poolIndex, _state);
     }
 
@@ -154,8 +150,8 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         _deposit = new uint128[](count);
         _withdraw = new uint128[](count);
         for(uint32 i = 0; i < count; i++){
-            _deposit[i] = dailyBalances[firstDay + i][poolId];
-            _deposit[i] = dailyWithdraw[firstDay + i][poolId];
+            _deposit[i] = dailyDeposit[firstDay + i][poolId];
+            _withdraw[i] = dailyWithdraw[firstDay + i][poolId];
         }
         return(_deposit, _withdraw);
     }
@@ -170,11 +166,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
             uint32 multiplier = getMultiplier(info[i].userInfo.lastDayAction, info[i].pool.endDay);
             //Show in accrueInterest user rewards for frontend
             info[i].userInfo.accrueInterest += info[i].userInfo.userDeposit == 0 && info[i].userInfo.lastDayAction >= currentDay ? 0 :
-            (info[i].userInfo.userDeposit * info[i].pool.dayPercent / 1000000) * multiplier;
-            info[i].accrueInterestInUSD = _user == address(0) ? 0 :
-                _getAmountInUSDT(address(info[i].pool.token), info[i].userInfo.accrueInterest);
-            info[i].userDepositInUSD = _user == address(0) ? 0 :
-                _getAmountInUSDT(address(info[i].pool.token), info[i].userInfo.userDeposit);
+            (info[i].userInfo.userDeposit * info[i].pool.dayPercent / 1000000000) * multiplier;
             info[i].timestampEndLockPeriod = !info[i].userInfo.endLockTime ? currentDay < info[i].pool.endDay ?
                 (info[i].userInfo.lastDayAction + info[i].pool.lockPeriod) * 86400 + 43200 : info[i].pool.endDay * 86400 + 43200 : 0;
         }
@@ -194,16 +186,17 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         _pool.token.safeTransferFrom(msg.sender, address(this), _amount);
         uint32 multiplier = getMultiplier(_userInfo.lastDayAction, _pool.endDay);
         _userInfo.accrueInterest += _userInfo.userDeposit == 0 && _userInfo.lastDayAction >= currentDay ? 0 :
-            (_userInfo.userDeposit * _pool.dayPercent / 1000000) * multiplier;
+            (_userInfo.userDeposit * _pool.dayPercent / 1000000000) * multiplier;
         _userInfo.lastDayAction = currentDay;
         _userInfo.endLockTime = false;
         _userInfo.userDeposit += _amount;
         pools[_poolIndex].totalDeposited += _amount;
-        dailyBalances[currentDay][_poolIndex] += _amount;
+        dailyDeposit[currentDay][_poolIndex] += _amount;
         emit Deposit(msg.sender, _amount, address(_pool.token), _poolIndex);
     }
 
     function withdraw(uint _poolIndex) public nonReentrant whenNotPaused notContract {
+        require(_poolIndex < pools.length, "Index out of bound");
         Pool memory _pool = pools[_poolIndex];
         UserInfo storage _userInfo = userInfo[msg.sender][_poolIndex];
         require(_userInfo.userDeposit > 0, "User has zero deposit");
@@ -212,7 +205,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         uint32 currentDay = getCurrentDay();
         uint32 multiplier = getMultiplier(_userInfo.lastDayAction, _pool.endDay);
         pendingInterest = _userInfo.accrueInterest +
-            (_userInfo.userDeposit * _pool.dayPercent / 1000000) * multiplier;
+            (_userInfo.userDeposit * _pool.dayPercent / 1000000000) * multiplier;
         if(currentDay - _userInfo.lastDayAction <= _pool.lockPeriod && currentDay < _pool.endDay){
             fee = _userInfo.userDeposit * _pool.withdrawalFee / 10000 + pendingInterest;
         }
@@ -223,8 +216,9 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
                 pendingWithdraw[currentDay][address(_pool.token)] += accumAmount;
                 userPendingWithdraw[msg.sender][address(_pool.token)] = currentDay;
                 emit PendingWithdraw(msg.sender, address(_pool.token), accumAmount);
+            } else {
+                revert("Withdrawal request pending");
             }
-            return;
         } else {
             pools[_poolIndex].totalDeposited -= _userInfo.userDeposit;
             dailyWithdraw[currentDay][_poolIndex] += _userInfo.userDeposit;
@@ -238,12 +232,13 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
     }
 
     function harvest(uint _poolIndex) public nonReentrant whenNotPaused notContract {
+        require(_poolIndex < pools.length, "Index out of bound");
         Pool memory _pool = pools[_poolIndex];
         UserInfo storage _userInfo = userInfo[msg.sender][_poolIndex];
         uint32 currentDay = getCurrentDay();
         uint32 multiplier = getMultiplier(_userInfo.lastDayAction, _pool.endDay);
         require(_userInfo.endLockTime || (currentDay - _userInfo.lastDayAction > _pool.lockPeriod || currentDay >= _pool.endDay), "Lock period not finished");
-        uint128 pendingAmount = _userInfo.accrueInterest + (_userInfo.userDeposit * _pool.dayPercent / 1000000) * multiplier;
+        uint128 pendingAmount = _userInfo.accrueInterest + (_userInfo.userDeposit * _pool.dayPercent / 1000000000) * multiplier;
         if(_pool.token.balanceOf(address(this)) < pendingAmount){
             if(userPendingWithdraw[msg.sender][address(_pool.token)] != currentDay){
                 pendingWithdraw[currentDay][address(_pool.token)] += pendingAmount;
@@ -262,7 +257,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
 
     function withdrawToken(IERC20Upgradeable _token, uint _amount) public onlyRole(TREASURY_ROLE) {
         require(address(_token) != address(0), "Cant be zero address");
-        _token.safeTransfer(treasury, _amount);
+        _token.safeTransfer(treasuryAdmin, _amount);
         emit TreasuryWithdraw(address(_token), _amount);
     }
 
@@ -279,7 +274,4 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         }
     }
 
-    function _getAmountInUSDT(address _token, uint _amount) internal view returns (uint128) {
-        return uint128(oracle.consult(_token, _amount, USDTAddress));
-    }
 }
