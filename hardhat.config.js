@@ -2,7 +2,7 @@ require("@nomiclabs/hardhat-waffle");
 require('@nomiclabs/hardhat-ethers');
 require("@nomiclabs/hardhat-etherscan");
 require('@openzeppelin/hardhat-upgrades');
-const { mnemonic, bscScanApiKey, privatKey } = require('./secrets.json');
+const { bscScanApiKey, privatKey } = require('./secrets.json');
 
 task("accounts", "Prints the list of accounts", async () => {
   const accounts = await ethers.getSigners();
@@ -31,7 +31,7 @@ module.exports = {
       url: "https://data-seed-prebsc-1-s1.binance.org:8545",
       chainId: 97,
       gasPrice: 20e9,
-      accounts: { mnemonic: mnemonic }
+      accounts: { privatKey }
     },
     mainnetBSC: {
       url: "https://bsc-dataseed.binance.org/",
@@ -43,7 +43,7 @@ module.exports = {
       url: "https://rpc-mumbai.maticvigil.com/",
       chainId: 80001,
       gasPrice: 20000000000,
-      accounts: { mnemonic: mnemonic }
+      accounts: { privatKey }
     },
   },
   etherscan: {
