@@ -8,7 +8,7 @@ const AUTOBSW_ADDRESS   = '0xa4b20183039b2F9881621C3A03732fBF0bfdff10'
 const TREASURY_ADDRESS  = '0x4b83b646761325ff71874719f64A8c5221Bed9a0'
 const TREASURY_ADMIN_ADDRESS  = '0x5748e67AD615D0494C0fFaedB26843Af8065C4cC'
 
-// const FIXED_STAKING_ADDRESS = ``
+const FIXED_STAKING_ADDRESS = `0xa04adebaf9c96882C6d59281C23Df95AF710003e`
 
 const toBN = (numb, power = 18) =>  ethers.BigNumber.from(10).pow(power).mul(numb);
 
@@ -27,15 +27,15 @@ const main = async () => {
     console.log('='.repeat(80)+'\n')
 
     const FixedStakingFactory = await ethers.getContractFactory('FixedStaking')
-    fixedStaking = await upgrades.deployProxy(
-        FixedStakingFactory,
-        [TREASURY_ADDRESS, TREASURY_ADMIN_ADDRESS,  AUTOBSW_ADDRESS],
-        {nonce: ++nonce, gasLimit: 5e6
-        }
-    )
-    await fixedStaking.deployed() && nonce++
-    console.log(`✅ fixedStaking deployed to: ${fixedStaking.address}`)
-    // fixedStaking = await FixedStakingFactory.attach(FIXED_STAKING_ADDRESS);
+    // fixedStaking = await upgrades.deployProxy(
+    //     FixedStakingFactory,
+    //     [TREASURY_ADDRESS, TREASURY_ADMIN_ADDRESS,  AUTOBSW_ADDRESS],
+    //     {nonce: ++nonce, gasLimit: 5e6
+    //     }
+    // )
+    // await fixedStaking.deployed() && nonce++
+    // console.log(`✅ fixedStaking deployed to: ${fixedStaking.address}`)
+    fixedStaking = await FixedStakingFactory.attach(FIXED_STAKING_ADDRESS);
 
     const endDayForPools = +await fixedStaking.getCurrentDay() + 360
     const pools = [{
