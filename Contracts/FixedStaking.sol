@@ -168,7 +168,7 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
             info[i].userInfo.accrueInterest += info[i].userInfo.userDeposit == 0 && info[i].userInfo.lastDayAction >= currentDay ? 0 :
             (info[i].userInfo.userDeposit * info[i].pool.dayPercent / 1000000000) * multiplier;
             info[i].timestampEndLockPeriod = !info[i].userInfo.endLockTime ? currentDay < info[i].pool.endDay ?
-                (info[i].userInfo.lastDayAction + info[i].pool.lockPeriod) * 86400 + 43200 : info[i].pool.endDay * 86400 + 43200 : 0;
+            (info[i].userInfo.lastDayAction + info[i].pool.lockPeriod) * 86400: info[i].pool.endDay * 86400: 0;
         }
         holderPoolAmount = _user == address(0) ? 0 : getHolderPoolAmount(_user);
     }
@@ -181,13 +181,13 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         uint32 currentDay = getCurrentDay();
         require(_pool.depositEnabled && currentDay < _pool.endDay, "Deposit on pool is disabled");
         require(_userInfo.userDeposit + _amount >= _pool.minDeposit &&
-                _userInfo.userDeposit + _amount <= _pool.maxDeposit &&
-                _pool.totalDeposited + _amount <= _pool.maxPoolAmount, "Amount over pool limits");
+        _userInfo.userDeposit + _amount <= _pool.maxDeposit &&
+            _pool.totalDeposited + _amount <= _pool.maxPoolAmount, "Amount over pool limits");
         _pool.token.safeTransferFrom(msg.sender, address(this), _amount);
         uint32 multiplier = getMultiplier(_userInfo.lastDayAction, _pool.endDay);
         _userInfo.accrueInterest += _userInfo.userDeposit == 0 && _userInfo.lastDayAction >= currentDay ? 0 :
-            (_userInfo.userDeposit * _pool.dayPercent / 1000000000) * multiplier;
-        _userInfo.lastDayAction = currentDay;
+        (_userInfo.userDeposit * _pool.dayPercent / 1000000000) * multiplier;
+        _userInfo.lastDayAction = currentDay + 1;
         _userInfo.endLockTime = false;
         _userInfo.userDeposit += _amount;
         pools[_poolIndex].totalDeposited += _amount;
@@ -205,8 +205,8 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         uint32 currentDay = getCurrentDay();
         uint32 multiplier = getMultiplier(_userInfo.lastDayAction, _pool.endDay);
         pendingInterest = _userInfo.accrueInterest +
-            (_userInfo.userDeposit * _pool.dayPercent / 1000000000) * multiplier;
-        if(currentDay - _userInfo.lastDayAction <= _pool.lockPeriod && currentDay < _pool.endDay){
+        (_userInfo.userDeposit * _pool.dayPercent / 1000000000) * multiplier;
+        if(_userInfo.lastDayAction >= currentDay || (currentDay - _userInfo.lastDayAction <= _pool.lockPeriod && currentDay < _pool.endDay)){
             fee = _userInfo.userDeposit * _pool.withdrawalFee / 10000 + pendingInterest;
         }
 
