@@ -2,7 +2,7 @@
 const { ethers, network, hardhat, upgrades} = require(`hardhat`);
 
 
-const fixedStakingAddress = `0xFCe998CE29709dC5AC425506Ef310cA2a2004E07`
+const fixedStakingAddress = `0xa04adebaf9c96882C6d59281C23Df95AF710003e`
 
 
 let fixedStaking;
