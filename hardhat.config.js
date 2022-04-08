@@ -27,23 +27,11 @@ module.exports = {
     hardhat: {
       blockGasLimit: 99999999
     },
-    testnetBSC: {
-      url: "https://data-seed-prebsc-1-s1.binance.org:8545",
-      chainId: 97,
-      gasPrice: 20e9,
-      accounts: { privatKey }
-    },
     mainnetBSC: {
       url: "https://bsc-dataseed.binance.org/",
       chainId: 56,
       gasPrice: 20e9,
       accounts: [privatKey]
-    },
-    testnetMatic: {
-      url: "https://rpc-mumbai.maticvigil.com/",
-      chainId: 80001,
-      gasPrice: 20000000000,
-      accounts: { privatKey }
     },
   },
   etherscan: {
