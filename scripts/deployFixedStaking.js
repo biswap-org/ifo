@@ -1,10 +1,10 @@
 const { ethers, upgrades, network } = require('hardhat')
 
-
 const WBNB_ADDRESS       = '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'
 const ADA_ADDRESS       = `0x3ee2200efb3400fabb9aacf31297cbdd1d435d47`
 const DOT_ADDRESS       = `0x7083609fCE4d1d8Dc0C979AAb8c869Ea2C873402`
 const AUTOBSW_ADDRESS   = '0xa4b20183039b2F9881621C3A03732fBF0bfdff10'
+
 const TREASURY_ADDRESS  = '0x4b83b646761325ff71874719f64A8c5221Bed9a0'
 const TREASURY_ADMIN_ADDRESS  = '0x5748e67AD615D0494C0fFaedB26843Af8065C4cC'
 
@@ -164,7 +164,6 @@ const main = async () => {
 
         }
     ]
-
 
     for(let item of pools){
         await addPool(item);
