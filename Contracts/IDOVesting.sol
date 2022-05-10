@@ -72,6 +72,8 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
 
     mapping(address => UserInfo[POOLS_NUMBER]) private _userInfo; // It maps the address to pool id to UserInfo
 
+    //participators
+    address[][POOLS_NUMBER] public addressList;
 
     event AdminWithdraw(uint256 amountDealToken, uint256 amountOfferingToken); // Admin withdraw events
     event AdminTokenRecovery(address tokenAddress, uint256 amountTokens); // Admin recovers token
@@ -112,8 +114,8 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         IAutoBsw _autoBsw
     ) public initializer {
         require(_dealToken != _offeringToken, "Tokens must be different");
-        require(_startBlock > block.number, "Start block must be older than current");
-        require(_endBlock > _startBlock, "End block must be older than _startBlock");
+        require(_startBlock > block.number, "Start block must be newest than current");
+        require(_endBlock > _startBlock, "End block must be newest than _startBlock");
         dealToken = _dealToken;
         offeringToken = _offeringToken;
         startBlock = _startBlock;
@@ -129,7 +131,6 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         __Ownable_init();
     }
 
-
     /**
      * @notice It returns Info to frontend for 1 request
      * @param user: user address (can be zero address if user not connected)
@@ -141,6 +142,12 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         for (uint8 i = 0; i < POOLS_NUMBER; i++) {
             (userInfoFront.userOfferingAmounts[i], userInfoFront.userRefundingAmounts[i]) =
                 _calculateUserAmounts(user,i);
+            if (_poolInfo[i].totalAmount > _poolInfo[i].raisingAmount && userInfoFront.userInfo[i].refunded) {
+                uint256 allocation = _poolInfo[i].totalAmount > 0 ? (userInfoFront.userInfo[i].amount * 1e12) / _poolInfo[i].totalAmount : 0;
+                userInfoFront.userOfferingAmounts[i] = (_poolInfo[i].offeringAmount * allocation) / 1e12;
+                uint256 payAmount = (_poolInfo[i].raisingAmount * allocation) / 1e12;
+                userInfoFront.userRefundingAmounts[i] = userInfoFront.userInfo[i].amount - payAmount;
+            }
         }
 
         userInfoFront.userDealTokenBalance = dealToken.balanceOf(user);
@@ -153,6 +160,16 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
                     : harvestReleaseBlocks[i] - block.number;
             }
         return (userInfoFront);
+    }
+
+    /**
+     * @notice Get participators length for pools
+     */
+    function getParticipatorsLength() public view returns(uint[] memory participatorsLength){
+        participatorsLength = new uint[](POOLS_NUMBER);
+        for(uint i = 0; i < POOLS_NUMBER; i++){
+            participatorsLength[i] = addressList[i].length;
+        }
     }
 
     /**
@@ -179,6 +196,10 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
         // Transfers funds to this contract
         dealToken.safeTransferFrom(msg.sender, address(this), _amount);
 
+        if(_user.amount == 0){
+            addressList[_pid].push(msg.sender);
+        }
+
         // Update totalAmount and user status
         _user.amount += _amount;
         _pool.totalAmount += _amount;
@@ -193,6 +214,7 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
      */
     function harvestPool(uint8 _pid, uint _harvestPeriod) public nonReentrant notContract {
         require(_harvestPeriod < HARVEST_PERIODS, "harvest period out of range");
+        require(_checkMinStakeAmount(msg.sender, _pid), "Not enough BSW in holder pool");
         require(block.number > harvestReleaseBlocks[_harvestPeriod], "not harvest time");
         require(_pid < POOLS_NUMBER, "Non valid pool id");
         UserInfo storage userInfoPid = _userInfo[msg.sender][_pid];
@@ -339,7 +361,8 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
 
         if (_pool.totalAmount > _pool.raisingAmount) {
             // Calculate allocation for the user
-            uint256 allocation = _getUserAllocation(_user, _pid);
+            //100,000,000,000 means 0.1 (10%) / 1 means 0.0000000000001 (0.0000001%) / 1,000,000,000,000 means 1 (100%)
+            uint256 allocation = _pool.totalAmount > 0 ? (userInfo.amount * 1e12) / _pool.totalAmount : 0;
 
             // Calculate the offering amount for the user based on the offeringAmount for the pool
             userOfferingAmount = (_pool.offeringAmount * allocation) / 1e12;
@@ -351,24 +374,8 @@ contract IDOVesting is Initializable, ReentrancyGuardUpgradeable, OwnableUpgrade
             userRefundingAmount = userInfo.refunded ? 0 : userInfo.amount - payAmount;
         } else {
             userRefundingAmount = 0;
-            // _userInfo[_user] / (raisingAmount / offeringAmount)
             userOfferingAmount = (userInfo.amount * _pool.offeringAmount) / _pool.raisingAmount;
         }
         return (userOfferingAmount, userRefundingAmount);
-    }
-
-    /**
-     * @notice It returns the user allocation for pool
-     * @dev 100,000,000,000 means 0.1 (10%) / 1 means 0.0000000000001 (0.0000001%) / 1,000,000,000,000 means 1 (100%)
-     * @param _user: user address
-     * @param _pid: pool id
-     * @return it returns the user's share of pool
-     */
-    function _getUserAllocation(address _user, uint8 _pid) internal view returns (uint256) {
-        if (_poolInfo[_pid].totalAmount > 0) {
-            return (_userInfo[_user][_pid].amount * 1e12) / (_poolInfo[_pid].totalAmount);
-        } else {
-            return 0;
-        }
     }
 }

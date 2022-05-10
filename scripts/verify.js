@@ -24,7 +24,7 @@ async function main() {
 
     console.log(`Verify IFO contract`);
     res = await hre.run("verify:verify", {
-        address: '0x7D5ACE42d80B58C4aF8C0108c9b8C82984883314',
+        address: '0x0ee724d2dadda7f21564452938d04c6cb2da8d81',
         constructorArguments: [],
         optimizationFlag: true
     })

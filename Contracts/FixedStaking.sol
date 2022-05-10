@@ -206,8 +206,10 @@ contract FixedStaking is Initializable, AccessControlUpgradeable, ReentrancyGuar
         uint32 multiplier = getMultiplier(_userInfo.lastDayAction, _pool.endDay);
         pendingInterest = _userInfo.accrueInterest +
         (_userInfo.userDeposit * _pool.dayPercent / 1000000000) * multiplier;
-        if(_userInfo.lastDayAction >= currentDay || (currentDay - _userInfo.lastDayAction <= _pool.lockPeriod && currentDay < _pool.endDay)){
-            fee = _userInfo.userDeposit * _pool.withdrawalFee / 10000 + pendingInterest;
+        if(!_userInfo.endLockTime){
+            if(_userInfo.lastDayAction >= currentDay || (currentDay - _userInfo.lastDayAction <= _pool.lockPeriod && currentDay < _pool.endDay)){
+                fee = _userInfo.userDeposit * _pool.withdrawalFee / 10000 + pendingInterest;
+            }
         }
 
         uint128 accumAmount = _userInfo.userDeposit + pendingInterest;
