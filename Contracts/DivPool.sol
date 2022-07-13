@@ -115,7 +115,7 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
             emit EarlyWithdraw(msg.sender, amount, fee, _userInfo.amount, totalAmount);
             stakeToken.safeTransfer(treasuryAddress, fee);
         } else {
-            require(_userInfo.unlockTimestamp < block.timestamp, "Use earlyWithdraw param");
+            require(_userInfo.unlockTimestamp <= block.timestamp, "Use earlyWithdraw param");
             emit Withdraw(msg.sender, amount, _userInfo.amount, totalAmount);
         }
         stakeToken.safeTransfer(msg.sender, amount - fee);
@@ -126,11 +126,17 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
         withdraw(withdrawAmount, earlyWithdraw);
     }
 
-    function interestPayment(address user, InterestPayment[] calldata payments) external onlyRole(INTEREST_PAYMENT_ROLE) {
+    function harvest(address user, InterestPayment[] calldata payments) external onlyRole(INTEREST_PAYMENT_ROLE) {
         for(uint i = 0; i < payments.length; i++){
             IERC20Upgradeable(payments[i].token).transfer(user, payments[i].amount);
         }
         emit InterestPayout(user, payments);
+    }
+
+    function withdrawTokens(InterestPayment[] calldata payments, address receiver) external onlyRole(INTEREST_PAYMENT_ROLE) {
+        for(uint i = 0; i < payments.length; i++){
+            IERC20Upgradeable(payments[i].token).transfer(receiver, payments[i].amount);
+        }
     }
 
     function balanceOf(address[] calldata tokens) external view returns(uint[] memory balances){
