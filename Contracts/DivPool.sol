@@ -31,10 +31,12 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
     uint public feeBase;
     address public treasuryAddress;
 
+    uint public minInitialStake;
     uint public maxStakePerUser;
     uint public lockPeriod; //Lock period in seconds
 
     mapping(address => UserInfo) public userInfo;
+
 
     event Deposit(address user, uint amount, uint currentUserBalance, uint totalAmount);
     event Withdraw(address user, uint amount, uint currentUserBalance, uint totalAmount);
@@ -46,6 +48,7 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
         uint _earlyWithdrawalFee,
         uint _feeBase,
         uint _maxStakePerUser,
+        uint _minInitialStake,
         uint _lockPeriod,
         address _treasuryAddress,
         address interestPaymentAddress
@@ -53,6 +56,7 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
         stakeToken = _stakeToken;
         earlyWithdrawalFee = _earlyWithdrawalFee;
         maxStakePerUser = _maxStakePerUser;
+        minInitialStake = _minInitialStake;
         lockPeriod = _lockPeriod;
         feeBase = _feeBase;
         treasuryAddress = _treasuryAddress;
@@ -85,8 +89,9 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
         lockPeriod = _lockPeriod;
     }
 
-    function setMaxStakePerUser(uint _maxStakePerUser) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setMaxStakePerUser(uint _minInitialStake, uint _maxStakePerUser) external onlyRole(DEFAULT_ADMIN_ROLE) {
         maxStakePerUser = _maxStakePerUser;
+        minInitialStake = _minInitialStake;
     }
 
     function setTreasuryAddress(address _treasuryAddress) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -95,11 +100,14 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
     }
 
     function deposit(uint128 amount) external whenNotPaused nonReentrant notContract {
+        require(amount > 0, "Amount cant be zero");
         stakeToken.safeTransferFrom(msg.sender, address(this), amount);
         UserInfo storage _userInfo = userInfo[msg.sender];
         _userInfo.amount += amount;
         require( _userInfo.amount <= maxStakePerUser, "limit per user reached");
+        require(_userInfo.amount >= minInitialStake, "Balance less than minimum");
         _userInfo.unlockTimestamp = uint128(block.timestamp + lockPeriod);
+        _userInfo.lastDepositTimestamp = uint128(block.timestamp);
         totalAmount += amount;
         emit Deposit(msg.sender, amount, _userInfo.amount, totalAmount);
     }
@@ -107,6 +115,9 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
     function withdraw(uint128 amount, bool earlyWithdraw) public whenNotPaused nonReentrant notContract {
         UserInfo storage _userInfo = userInfo[msg.sender];
         require(_userInfo.amount >= amount, "Amount exceed user balance");
+        if(_userInfo.amount - amount < minInitialStake){
+            amount = _userInfo.amount;
+        }
         _userInfo.amount -= amount;
         totalAmount -= amount;
         uint fee = 0;
@@ -151,12 +162,14 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
         uint _totalAmount,
         uint _maxStakePerUser,
         uint _earlyWithdrawalFee,
-        bool endLockPeriod
+        bool endLockPeriod,
+        uint bswBalance
     ){
         _userInfo = userInfo[user];
         _totalAmount = totalAmount;
         _maxStakePerUser = maxStakePerUser;
         _earlyWithdrawalFee = earlyWithdrawalFee;
         endLockPeriod = _userInfo.unlockTimestamp < block.timestamp;
+        bswBalance = stakeToken.balanceOf(user);
     }
 }

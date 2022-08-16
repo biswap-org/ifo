@@ -2,7 +2,7 @@ require("@nomiclabs/hardhat-waffle");
 require('@nomiclabs/hardhat-ethers');
 require("@nomiclabs/hardhat-etherscan");
 require('@openzeppelin/hardhat-upgrades');
-const { bscScanApiKey, privatKey } = require('./secrets.json');
+const { privatKey } = require('./secrets.json');
 
 task("accounts", "Prints the list of accounts", async () => {
   const accounts = await ethers.getSigners();
@@ -33,10 +33,16 @@ module.exports = {
       gasPrice: 20e9,
       accounts: [privatKey]
     },
+    testnetBSC: {
+      url: "https://data-seed-prebsc-1-s1.binance.org:8545",
+      chainId: 97,
+      gasPrice: 20e9,
+      accounts: [privatKey]
+    }
   },
-  etherscan: {
-    apiKey: bscScanApiKey
-  },
+  // etherscan: {
+  //   apiKey: bscScanApiKey
+  // },
   solidity: {
     compilers: [
       {
@@ -44,7 +50,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 9999,
           }
         }
       },
@@ -53,7 +59,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 9999,
           }
         }
       },
@@ -62,7 +68,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 9999,
           }
         }
       },
@@ -71,7 +77,7 @@ module.exports = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 9999,
           }
         }
       }
