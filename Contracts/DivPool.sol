@@ -38,6 +38,7 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
     mapping(address => UserInfo) public userInfo;
 
 
+
     event Deposit(address user, uint amount, uint currentUserBalance, uint totalAmount);
     event Withdraw(address user, uint amount, uint currentUserBalance, uint totalAmount);
     event EarlyWithdraw(address user, uint amount, uint fee, uint currentUserBalance, uint totalAmount);
@@ -126,15 +127,15 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
             emit EarlyWithdraw(msg.sender, amount, fee, _userInfo.amount, totalAmount);
             stakeToken.safeTransfer(treasuryAddress, fee);
         } else {
-            require(_userInfo.unlockTimestamp <= block.timestamp, "Use earlyWithdraw param");
+//            require(_userInfo.unlockTimestamp <= block.timestamp, "Use earlyWithdraw param");
             emit Withdraw(msg.sender, amount, _userInfo.amount, totalAmount);
         }
         stakeToken.safeTransfer(msg.sender, amount - fee);
     }
 
-    function withdrawAll(bool earlyWithdraw) external {
+    function withdrawAll() external {
         uint128 withdrawAmount = userInfo[msg.sender].amount;
-        withdraw(withdrawAmount, earlyWithdraw);
+        withdraw(withdrawAmount, false);
     }
 
     function harvest(address user, InterestPayment[] calldata payments) external onlyRole(INTEREST_PAYMENT_ROLE) {
@@ -142,6 +143,17 @@ contract DivPool is Initializable, ReentrancyGuardUpgradeable, PausableUpgradeab
             IERC20Upgradeable(payments[i].token).transfer(user, payments[i].amount);
         }
         emit InterestPayout(user, payments);
+    }
+
+    struct InterestPaymentsAmounts{
+        address receiver;
+        uint amount;
+    }
+
+    function interestPayment(InterestPaymentsAmounts[] calldata payments) external onlyRole(INTEREST_PAYMENT_ROLE) {
+        for(uint i = 0; i < payments.length; i++){
+            stakeToken.transfer(payments[i].receiver, payments[i].amount);
+        }
     }
 
     function withdrawTokens(InterestPayment[] calldata payments, address receiver) external onlyRole(INTEREST_PAYMENT_ROLE) {

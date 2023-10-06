@@ -2,7 +2,7 @@ require("@nomiclabs/hardhat-waffle");
 require('@nomiclabs/hardhat-ethers');
 require("@nomiclabs/hardhat-etherscan");
 require('@openzeppelin/hardhat-upgrades');
-const { privatKey } = require('./secrets.json');
+const { bscScanApiKey, privatKey } = require('./secrets.json');
 
 task("accounts", "Prints the list of accounts", async () => {
   const accounts = await ethers.getSigners();
@@ -22,27 +22,33 @@ module.exports = {
   defaultNetwork: "hardhat",
   networks: {
     localhost: {
-      url: "http://127.0.0.1:8545"
+      url: "http://127.0.0.1:8545",
+      blockGasLimit: 5e6,
+      gasPrice: 5e9,
+      timeout: 1_000_000
     },
     hardhat: {
-      blockGasLimit: 99999999
+      blockGasLimit: 99999999,
+      forking: {
+        url: "https://restless-bitter-cherry.bsc.quiknode.pro/7cd27b905f7b140932a1f71bd22f24e575e0a3ca/"
+      }
     },
     mainnetBSC: {
-      url: "https://bsc-dataseed.binance.org/",
+      url: "https://restless-bitter-cherry.bsc.quiknode.pro/7cd27b905f7b140932a1f71bd22f24e575e0a3ca/", //"https://bsc-dataseed.binance.org/",
       chainId: 56,
-      gasPrice: 20e9,
+      gasPrice: 5e9,
       accounts: [privatKey]
     },
     testnetBSC: {
       url: "https://data-seed-prebsc-1-s1.binance.org:8545",
       chainId: 97,
-      gasPrice: 20e9,
+      gasPrice: 5e9,
       accounts: [privatKey]
     }
   },
-  // etherscan: {
-  //   apiKey: bscScanApiKey
-  // },
+  etherscan: {
+    apiKey: bscScanApiKey
+  },
   solidity: {
     compilers: [
       {
